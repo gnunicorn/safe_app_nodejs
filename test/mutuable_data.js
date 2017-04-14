@@ -526,7 +526,55 @@ describe('Mutable Data', () => {
     );
   });
 
-  describe.only('NFS emulation', () => {
+  describe.only("complex tests", () => {
+
+    it("creates, removes key and fetches", () => {
+      const publicId = crypto.randomBytes(32).toString('hex');
+      const SAMPLE_KEYS = {'key1': 'val1', 'key2': 'val2'};
+      const key = "key1";
+      const typetag = 16543;
+
+      const first = app.mutableData.newRandomPublic(typetag)
+        .then((m) => m.quickSetup(SAMPLE_KEYS).then(() => m.getNameAndTag()))
+        .then((data) => (publicName = data.name))
+        .then(() => app.auth.getHomeContainer())
+        .then((mdata) => mdata.getEntries()
+          .then((entries) => entries.mutate()
+            .then((mut) => mut.insert(publicId, publicName)
+              .then(() => mdata.applyEntriesMutation(mut)))))
+              .then(() => SAMPLE_KEYS)
+
+
+      const second = first.then(() => app.auth.getHomeContainer()
+        .then((mdata) => mdata.getEntries())
+        .then((entries) => entries.get(publicId))
+        .then((value) => app.mutableData.newPublic(value.buf, typetag))
+        .then((mdata) => mdata.getEntries()
+          .then((entries) => entries.get(key)
+            .then((value) => entries.mutate()
+                .then((mut) => mut.remove(key, value.version + 1)
+                  .then(() => mdata.applyEntriesMutation(mut)))))));
+
+      const third = second.then(() => app.auth.getHomeContainer()
+        .then((mdata) => mdata.getEntries())
+        .then((entries) => entries.get(publicId))
+        .then((value) => app.mutableData.newPublic(value.buf, typetag))
+        .then((mut) => mut.getEntries()
+          .then((entries) => {
+            const dataEntries = {};
+            return entries.forEach((key, val, version) => {
+              dataEntries[key.toString()] = val.buf.toString();
+            }).then(() => dataEntries);
+          })));
+
+      return third.then((data) => {
+        console.log(data);
+        data.should.equal({"key2": "val2"});
+      })
+    });
+  });
+
+  describe('NFS emulation', () => {
     it('nfs update', () => app.mutableData.newRandomPrivate(TAG_TYPE)
       .then((m) => m.quickSetup({}).then(() => m.emulateAs('NFS')))
       .then((nfs) => nfs.create('Hello world')
